@@ -12,14 +12,14 @@ from langchain_core.messages import (
     SystemMessage,
 )
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.pydantic_v1 import BaseModel
+from langchain_core.pydantic_v1 import BaseModel, SecretStr
 
 from langchain_ibm import ChatWatsonx
 
 WX_APIKEY = os.environ.get("WATSONX_APIKEY", "")
 WX_PROJECT_ID = os.environ.get("WATSONX_PROJECT_ID", "")
 
-URL = "https://us-south.ml.cloud.ibm.com"
+URL = os.environ.get("WATSONX_URL", "")
 MODEL_ID = "mistralai/mixtral-8x7b-instruct-v01"
 
 
