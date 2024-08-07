@@ -63,6 +63,7 @@ from langchain_core.utils.function_calling import (
 from langchain_ibm.chat_formatters.base import ChatFormatter
 from langchain_ibm.chat_formatters.llama3_chat_formatter import Llama3ChatFormatter
 from langchain_ibm.chat_formatters.mixtral_chat_formatter import MixtralChatFormatter
+from langchain_ibm.prompts import MIXTRAL_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -537,60 +538,14 @@ class ChatWatsonx(BaseChatModel):
         # else:
         #     chat_prompt = self._create_chat_prompt(message_dicts)
 
-        chat_prompt = self._get_formatter().format(messages)
-
         tools = kwargs.get("tools")
+        #chat_prompt = self._get_formatter().format(messages)
+        chat_prompt = MIXTRAL_PROMPT.format(messages=messages, tools=tools)
+        logging.info(f"Chat prompt: {chat_prompt}")
 
-        # Really?? factor this shit out
+
         if tools:
-            chat_prompt = f"""
-You are Mixtral Chat function calling, an AI language model developed by Mistral AI.
-You are a cautious assistant. You carefully follow instructions. You are helpful and
-harmless and you follow ethical guidelines and promote positive behavior. Here are a
-few of the tools available to you:
-[AVAILABLE_TOOLS]
-{json.dumps(tools[0], indent=2)}
-[/AVAILABLE_TOOLS]
-To use these tools you must always respond in JSON format containing `"type"` and
-`"function"` key-value pairs. Also `"function"` key-value pair always containing
-`"name"` and `"arguments"` key-value pairs. For example, to answer the question,
-"What is a length of word think?" you must use the get_word_length tool like so:
-
-```json
-{{
-    "type": "function",
-    "function": {{
-        "name": "get_word_length",
-        "arguments": {{
-            "word": "think"
-        }}
-    }}
-}}
-```
-</endoftext>
-
-Remember, even when answering to the user, you must still use this JSON format!
-If you'd like to ask how the user is doing you must write:
-
-```json
-{{
-    "type": "function",
-    "function": {{
-        "name": "Final Answer",
-        "arguments": {{
-            "output": "How are you today?"
-        }}
-    }}
-}}
-```
-</endoftext>
-
-Remember to end your response with '</endoftext>'
-
-{chat_prompt}
-(reminder to respond in a JSON blob no matter what and use tools only if necessary)"""
-
-            params = params | {"stop_sequences": ["</endoftext>"]}
+            params = params | {"stop_sequences": ["[/TOOL_CALLS]"]}
 
         if "tools" in kwargs:
             del kwargs["tools"]

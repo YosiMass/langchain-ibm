@@ -2,6 +2,7 @@ import json
 import os
 from typing import Any
 
+from ibm_watsonx_ai.client import logging
 import pytest
 from ibm_watsonx_ai.metanames import GenTextParamsMetaNames  # type: ignore
 from langchain_core.messages import (
