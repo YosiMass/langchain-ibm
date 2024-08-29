@@ -403,8 +403,8 @@ class ChatWatsonx(BaseChatModel):
             params = params | {
                 "stop_sequences": self.chat_schema.tools_stop_sequences}
 
-        chat_prompt = self.chat_schema.template.render(
-            messages=messages, tools=json.dumps(tools) if tools else None)
+        # TODO: align prompts
+        chat_prompt = self.chat_schema.template.render(messages=messages, tools=tools)
 
         if "tools" in kwargs:
             del kwargs["tools"]

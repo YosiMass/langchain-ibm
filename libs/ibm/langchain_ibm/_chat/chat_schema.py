@@ -6,7 +6,11 @@ from jinja2.sandbox import SandboxedEnvironment
 from langchain_core.messages import ToolCall
 from langchain_core.pydantic_v1 import BaseModel
 
+def raise_exception(message):
+    raise Exception(message)
+
 template_env = SandboxedEnvironment()
+template_env.globals['raise_exception'] = raise_exception
 template_env.filters['to_json'] = lambda value: json.dumps(value)
 template_env.filters['has_system_message'] = lambda messages: any(
     message.type == "system" for message in messages)

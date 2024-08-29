@@ -219,7 +219,7 @@ def test_mistral_tool_prompt():
     assert MISTRAL_LARGE.template.render(
         messages=TOOL_PROMPT.format_messages(),
         input="What's 3 + 2?",
-        tools=json.dumps(tools)
+        tools=tools
     ) == expected
 
     tool_call_message = AIMessage(

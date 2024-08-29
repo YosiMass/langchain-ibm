@@ -13,38 +13,98 @@ _alphanum = string.ascii_letters + string.digits
 # Supports tool calls for tool-enabled Mistral models.
 # See: https://github.com/mistralai/mistral-common/blob/main/examples/tokenizer.ipynb
 # See: https://ollama.com/library/mistral-large/blobs/cd887e2923a9
-_TEMPLATE = template_env.from_string("""<s>
-{%- set last_human = messages|last_human_message_idx -%}
-{%- for message in messages -%}
-    {%- if message.type == "system" -%}
-        [INST] {{ message.content }} [/INST]</s>
-    {%- elif message.type == "human" -%}
-        {%- if tools and loop.index == last_human -%}
-            [AVAILABLE_TOOLS] {{ tools }} [/AVAILABLE_TOOLS]
-        {%- endif -%}
-        [INST] {{ message.content }} [/INST]
-    {%- elif message.type == "ai" -%}
-        {%- if message.content -%}
-            {{ message.content }}
-            {%- if messages|length - loop.index != 0 -%}
-                </s>
-            {%- endif -%}
-        {%- endif -%}
-        {%- if message.tool_calls -%}
-            [TOOL_CALLS] [
-                {%- for tool_call in message.tool_calls -%}
-                    {"name": "{{ tool_call.name }}", "arguments": {{ tool_call.args | to_json }}, "id": "{{ tool_call.id }}"}
-                    {%- if not loop.last -%},{%- endif -%}
-                {%- endfor -%}
-            ]
-            {%- if not loop.last -%}
-                </s>
-            {%- endif -%}
-        {%- endif -%}
-    {%- elif message.type == "tool" -%}
-        [TOOL_RESULTS] {"content": "{{ message.content }}", "id": "{{ message.tool_call_id }}"} [/TOOL_RESULTS]
-    {%- endif -%}
-{%- endfor -%}""")
+#
+# TODO: mistral large and mixtral seem to have different prompts, fix this.
+_TEMPLATE = template_env.from_string("""{%- if messages[0]["type"] == "system" %}
+    {%- set system_message = messages[0]["content"] %}
+    {%- set loop_messages = messages[1:] %}
+{%- else %}
+    {%- set loop_messages = messages %}
+{%- endif %}
+{%- if not tools is defined %}
+    {%- set tools = none %}
+{%- endif %}
+{%- set user_messages = loop_messages | selectattr("type", "equalto", "human") | list %}
+
+{#- This block checks for alternating user/assistant messages, skipping tool calling messages #}
+{%- set ns = namespace() %}
+{%- set ns.index = 0 %}
+{%- for message in loop_messages %}
+    {%- if not (message.type == "tool" or message.type == "tool_results" or (message.tool_calls is defined and message.tool_calls)) %}
+        {%- if (message["type"] == "human") != (ns.index % 2 == 0) %}
+            {{- raise_exception("After the optional system message, conversation roles must alternate user/assistant/user/assistant/...") }}
+        {%- endif %}
+        {%- set ns.index = ns.index + 1 %}
+    {%- endif %}
+{%- endfor %}
+
+{{- "<s>" }}
+{%- for message in loop_messages %}
+    {%- if message["type"] == "human" %}
+        {%- if tools is not none and (message == user_messages[-1]) %}
+            {{- "[AVAILABLE_TOOLS] [" }}
+            {%- for tool in tools %}
+                {%- set tool = tool.function %}
+                {{- '{"type": "function", "function": {' }}
+                {%- for key, val in tool.items() if key != "return" %}
+                    {%- if val is string %}
+                        {{- '"' + key + '": "' + val + '"' }}
+                    {%- else %}
+                        {{- '"' + key + '": ' + val|tojson }}
+                    {%- endif %}
+                    {%- if not loop.last %}
+                        {{- ", " }}
+                    {%- endif %}
+                {%- endfor %}
+                {{- "}}" }}
+                {%- if not loop.last %}
+                    {{- ", " }}
+                {%- else %}
+                    {{- "]" }}
+                {%- endif %}
+            {%- endfor %}
+            {{- "[/AVAILABLE_TOOLS]" }}
+        {%- endif %}
+        {%- if loop.last and system_message is defined %}
+            {{- "[INST] " + system_message + "\n\n" + message["content"] + "[/INST]" }}
+        {%- else %}
+            {{- "[INST] " + message["content"] + "[/INST]" }}
+        {%- endif %}
+    {%- elif message.tool_calls is defined and message.tool_calls %}
+        {{- "[TOOL_CALLS] [" }}
+        {%- for tool_call in message.tool_calls %}
+            {%- set out = tool_call.function|tojson %}
+            {{- out[:-1] }}
+            {%- if not tool_call.id is defined or tool_call.id|length != 9 %}
+                {{- raise_exception("Tool call IDs should be alphanumeric strings with length 9!") }}
+            {%- endif %}
+            {{- ', "id": "' + tool_call.id + '"}' }}
+            {%- if not loop.last %}
+                {{- ", " }}
+            {%- else %}
+                {{- "]" + "</s>" }}
+            {%- endif %}
+        {%- endfor %}
+    {%- elif message["type"] == "ai" %}
+        {{- " " + message["content"]|trim }}
+        {%- if not loop.last %}
+            {{- "</s>" }}
+        {%- endif %}
+    {%- elif message["type"] == "tool_results" or message["type"] == "tool" %}
+        {%- if message.content is defined and message.content.content is defined %}
+            {%- set content = message.content.content %}
+        {%- else %}
+            {%- set content = message.content %}
+        {%- endif %}
+        {{- '[TOOL_RESULTS] {"content": ' + content|string + ", " }}
+        {%- if not message.tool_call_id is defined or message.tool_call_id|length != 9 %}
+            {{- raise_exception("Tool call IDs should be alphanumeric strings with length 9!") }}
+        {%- endif %}
+        {{- '"call_id": "' + message.tool_call_id + '"}[/TOOL_RESULTS]' }}
+    {%- else %}
+        {{- raise_exception("Only user and assistant roles are supported, with the exception of an initial optional system message!") }}
+    {%- endif %}
+{%- endfor %}""")
 
 
 def parse_mistral_tool_call(text: str) -> Union[str, List[ToolCall]]:
