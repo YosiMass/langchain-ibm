@@ -73,8 +73,8 @@ _TEMPLATE = template_env.from_string("""{%- if messages[0]["type"] == "system" %
     {%- elif message.tool_calls is defined and message.tool_calls %}
         {{- "[TOOL_CALLS] [" }}
         {%- for tool_call in message.tool_calls %}
-            {%- set out = tool_call.function|tojson %}
-            {{- out[:-1] }}
+            {%- set out = tool_call|tojson %}
+            {{- out }}
             {%- if not tool_call.id is defined or tool_call.id|length != 9 %}
                 {{- raise_exception("Tool call IDs should be alphanumeric strings with length 9!") }}
             {%- endif %}

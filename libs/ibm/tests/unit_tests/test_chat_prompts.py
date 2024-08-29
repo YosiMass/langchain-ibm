@@ -250,7 +250,7 @@ def test_mistral_tool_prompt():
             parsed_tool_call_message +
             ToolMessage(content="5", tool_call_id=tool_calls[0]["id"])).format_messages(),
         input="What's 3 + 2?",
-        tools=json.dumps(tools)
+        tools=tools
     ) == expected
 
 
