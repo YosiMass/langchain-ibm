@@ -175,20 +175,22 @@ What's 3 + 2?<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
 
 
 def test_mistral_conversation_no_history() -> None:
-    expected = """<s>[INST] You are a respectful AI assistant. [/INST]</s>\
-[INST] Hello, how are you? [/INST]"""
+    expected = """<s>[INST] You are a respectful AI assistant.
+
+Hello, how are you?[/INST]"""
 
     assert MISTRAL_LARGE.template.render(messages=CONVERSATION_PROMPT.format_messages(
         chat_history=[], input="Hello, how are you?")) == expected
 
 
 def test_mistral_conversation_history() -> None:
-    expected = """<s>[INST] You are a respectful AI assistant. [/INST]</s>\
-[INST] Hello, how are you? [/INST]\
+    expected = """<s>[INST] Hello, how are you?[/INST] \
 Hello! I'm doing well, thank you for asking. I'm a large language model assistant.</s>\
-[INST] What's the capital of Italy? [/INST]\
+[INST] What's the capital of Italy?[/INST] \
 Rome</s>\
-[INST] Thanks! [/INST]"""
+[INST] You are a respectful AI assistant.
+
+Thanks![/INST]"""
 
     assert MISTRAL_LARGE.template.render(messages=CONVERSATION_PROMPT.format_messages(
         chat_history=HISTORY, input="Thanks!")) == expected
@@ -199,11 +201,11 @@ def test_mistral_instruct_prompt() -> None:
 {
     "type": "entity_type",
     "value": "entity_value"
-} [/INST]</s>\
-[INST] Here is the input:
-"The capital of Italy is Rome.". Remember to always respond in the json format specified above. [/INST]\
-Here is the json output:
-"""
+}
+
+Here is the input:
+"The capital of Italy is Rome.". Remember to always respond in the json format specified above.[/INST] \
+Here is the json output:"""
 
     assert MISTRAL_LARGE.template.render(messages=INSTRUCT_PROMPT.format_messages(
         input="The capital of Italy is Rome.")) == expected
@@ -212,15 +214,16 @@ Here is the json output:
 def test_mistral_tool_prompt():
     tools = [convert_to_openai_tool(add)]
 
-    expected = f"""<s>[INST] You are an helpful assistant. [/INST]</s>\
-[AVAILABLE_TOOLS] {json.dumps(tools)} [/AVAILABLE_TOOLS]\
-[INST] What's 3 + 2? [/INST]"""
+    expected = f"""<s>[AVAILABLE_TOOLS] {json.dumps(tools)}[/AVAILABLE_TOOLS]\
+[INST] You are an helpful assistant.
 
-    # assert MISTRAL_LARGE.template.render(
-    #     messages=TOOL_PROMPT.format_messages(),
-    #     input="What's 3 + 2?",
-    #     tools=tools
-    # ) == expected
+What's 3 + 2?[/INST]"""
+
+    assert MISTRAL_LARGE.template.render(
+        messages=TOOL_PROMPT.format_messages(),
+        input="What's 3 + 2?",
+        tools=tools
+    ) == expected
 
     tool_call_message = AIMessage(
         content='[TOOL_CALLS][{"name": "add", "arguments": {"a": 3, "b": 2}}]',
@@ -241,8 +244,8 @@ def test_mistral_tool_prompt():
         ])}
     )
 
-    expected += f"""[TOOL_CALLS] [{{"name": "add", "arguments": {{"a": 3, "b": 2}}, "id": "{tool_calls[0]['id']}"}}]</s>\
-[TOOL_RESULTS] {{"content": "5", "id": "{tool_calls[0]['id']}"}} [/TOOL_RESULTS]"""
+    expected += f"""[TOOL_CALLS] [{{"name": "add", "parameters": {{"a": 3, "b": 2}}, "id": "{tool_calls[0]['id']}"}}]</s>\
+[TOOL_RESULTS] {{"content": 5, "call_id": "{tool_calls[0]['id']}"}}[/TOOL_RESULTS]"""
 
     assert MISTRAL_LARGE.template.render(
         messages=(

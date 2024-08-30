@@ -12,7 +12,7 @@ _alphanum = string.ascii_letters + string.digits
 #
 # Supports tool calls for tool-enabled Mistral models.
 # See: https://github.com/mistralai/mistral-common/blob/main/examples/tokenizer.ipynb
-# See: https://ollama.com/library/mistral-large/blobs/cd887e2923a9
+# See: https://huggingface.co/mistralai/Mistral-Large-Instruct-2407/blob/main/tokenizer_config.json#L6176
 #
 # TODO: mistral large and mixtral seem to have different prompts, fix this.
 _TEMPLATE = template_env.from_string("""{%- if messages[0]["type"] == "system" %}
@@ -25,6 +25,7 @@ _TEMPLATE = template_env.from_string("""{%- if messages[0]["type"] == "system" %
     {%- set tools = none %}
 {%- endif %}
 {%- set user_messages = loop_messages | selectattr("type", "equalto", "human") | list %}
+{%- set last_user_message = loop_messages | last_human_message_idx %}
 
 {#- This block checks for alternating user/assistant messages, skipping tool calling messages #}
 {%- set ns = namespace() %}
@@ -65,7 +66,7 @@ _TEMPLATE = template_env.from_string("""{%- if messages[0]["type"] == "system" %
             {%- endfor %}
             {{- "[/AVAILABLE_TOOLS]" }}
         {%- endif %}
-        {%- if loop.last and system_message is defined %}
+        {%- if loop.index == last_user_message and system_message is defined %}
             {{- "[INST] " + system_message + "\n\n" + message["content"] + "[/INST]" }}
         {%- else %}
             {{- "[INST] " + message["content"] + "[/INST]" }}
@@ -74,7 +75,7 @@ _TEMPLATE = template_env.from_string("""{%- if messages[0]["type"] == "system" %
         {{- "[TOOL_CALLS] [" }}
         {%- for tool_call in message.tool_calls %}
             {%- set out = tool_call|to_json %}
-            {{- out }}
+            {{- "{" + '"name": "' + tool_call.name + '", "parameters": ' + tool_call.args|to_json + "" }}
             {%- if not tool_call.id is defined or tool_call.id|length != 9 %}
                 {{- raise_exception("Tool call IDs should be alphanumeric strings with length 9!") }}
             {%- endif %}
