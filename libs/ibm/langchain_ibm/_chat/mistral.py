@@ -13,8 +13,6 @@ _alphanum = string.ascii_letters + string.digits
 # Supports tool calls for tool-enabled Mistral models.
 # See: https://github.com/mistralai/mistral-common/blob/main/examples/tokenizer.ipynb
 # See: https://huggingface.co/mistralai/Mistral-Large-Instruct-2407/blob/main/tokenizer_config.json#L6176
-#
-# TODO: mistral large and mixtral seem to have different prompts, fix this.
 _TEMPLATE = template_env.from_string("""{%- if messages[0]["type"] == "system" %}
     {%- set system_message = messages[0]["content"] %}
     {%- set loop_messages = messages[1:] %}

@@ -24,7 +24,7 @@ URL = os.environ.get("WATSONX_URL", "")
 
 MODEL_ID = "mistralai/mixtral-8x7b-instruct-v01"
 MISTRAL_LARGE_ID = "mistralai/mistral-large"
-LLAMA31_405B_ID = "meta-llama/llama-3-405b-instruct"
+LLAMA31_70B_ID = "meta-llama/llama-3-1-70b-instruct"
 
 
 def test_01_generate_chat() -> None:
@@ -398,7 +398,7 @@ def test_2X_llama31_tool_response():
 
     params = {GenTextParamsMetaNames.MAX_NEW_TOKENS: 500}
     chat = ChatWatsonx(
-        model_id=LLAMA31_405B_ID,
+        model_id=LLAMA31_70B_ID,
         url=URL,  # type: ignore[arg-type]
         project_id=WX_PROJECT_ID,
         params=params,  # type: ignore[arg-type]

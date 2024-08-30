@@ -12,55 +12,123 @@ _alphanum = string.ascii_letters + string.digits
 #
 # Supports tool calls for llama3.1 models.
 # See: https://llama.meta.com/docs/model-cards-and-prompt-formats/llama3_1/#json-based-tool-calling
+# See: https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct/blob/main/tokenizer_config.json#L2053
 _TEMPLATE = template_env.from_string("""<|begin_of_text|>
-{%- set last_human = messages|last_human_message_idx -%}
-{%- if not messages|has_system_message and tools -%}
-<|start_header_id|>system<|end_header_id|>
+{%- if not tools_in_user_message is defined %}
+    {%- set tools_in_user_message = false %}
+{%- endif %}
+{%- if not date_string is defined %}
+    {%- set date_string = "26 Jul 2024" %}
+{%- endif %}
+{%- if not tools is defined %}
+    {%- set tools = none %}
+{%- endif %}
 
-Environment: ipython<|eot_id|>
-{%- endif -%}
-{%- for message in messages -%}
-{%-     if message.type == "system" -%}
-<|start_header_id|>system<|end_header_id|>
+{#- This block extracts the system message, so we can slot it into the right place. #}
+{%- if messages[0]['type'] == 'system' %}
+    {%- set system_message = messages[0]['content']|trim %}
+    {%- set messages = messages[1:] %}
+{%- else %}
+    {%- set system_message = "" %}
+{%- endif %}
 
-{%          if tools -%}
-Environment: ipython
+{#- System message + builtin tools #}
+{{- "<|start_header_id|>system<|end_header_id|>\n\n" }}
+{%- if builtin_tools is defined or tools is not none %}
+    {{- "Environment: ipython\n" }}
+{%- endif %}
+{%- if builtin_tools is defined %}
+    {{- "Tools: " + builtin_tools | reject('equalto', 'code_interpreter') | join(", ") + "\n\n"}}
+{%- endif %}
+{{- "Cutting Knowledge Date: December 2023\n" }}
+{{- "Today Date: " + date_string + "\n\n" }}
+{%- if tools is not none and not tools_in_user_message %}
+    {{- "You have access to the following functions. To call a function, please respond with JSON for a function call." }}
+    {{- 'Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}.' }}
+    {{- "Do not use variables.\n\n" }}
+    {%- for t in tools %}
+        {{- t | tojson(indent=4) }}
+        {{- "\n\n" }}
+    {%- endfor %}
+{%- endif %}
+{{- system_message }}
+{{- "<|eot_id|>" }}
 
-{%          endif -%}
-{{ message.content }}<|eot_id|>
-{%-     elif message.type == "human" -%}
-<|start_header_id|>user<|end_header_id|>
+{#- Custom tools are passed in a user message with some extra guidance #}
+{%- if tools_in_user_message and not tools is none %}
+    {#- Extract the first user message so we can plug it in here #}
+    {%- if messages | length != 0 %}
+        {%- set first_user_message = messages[0]['content']|trim %}
+        {%- set messages = messages[1:] %}
+    {%- else %}
+        {{- raise_exception("Cannot put tools in the first user message when there's no first user message!") }}
+    {%- endif %}
+    {{- '<|start_header_id|>user<|end_header_id|>\n\n' -}}
+    {{- "Given the following functions, please respond with a JSON for a function call " }}
+    {{- "with its proper arguments that best answers the given prompt.\n\n" }}
+    {{- 'Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}.' }}
+    {{- "Do not use variables.\n\n" }}
+    {%- for t in tools %}
+        {{- t | tojson(indent=4) }}
+        {{- "\n\n" }}
+    {%- endfor %}
+    {{- first_user_message + "<|eot_id|>"}}
+    {%- if messages | length == 0 %}
+        {{- '<|start_header_id|>assistant<|end_header_id|>\n\n' }}
+    {%- endif %}
+{%- endif %}
 
-{%          if tools and loop.index == last_human -%}
-Given the following functions, please respond with a JSON for a function call with its proper arguments that best answers the given prompt.
-
-Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}. Do not use variables.
-
-{{ tools }}
-
-{%          endif -%}
-{{ message.content }}<|eot_id|>
-{%-     elif message.type == "ai" -%}
-<|start_header_id|>assistant<|end_header_id|>
-
-{%          if message.tool_calls -%}
-<|python_tag|>[
-{%-             for tool_call in message.tool_calls -%}
-{"name": "{{ tool_call.name }}", "parameters": {{ tool_call.args | to_json }}, "id": "{{ tool_call.id }}"}{% if not loop.last %}, {% endif %}
-{%-             endfor -%}
-]{% if not loop.last %}<|eom_id|>{% endif %}
-{%-         else -%}
-{{ message.content }}{% if not loop.last %}<|eot_id|>{% endif %}
-{%-         endif -%}
-{%-     elif message.type == "tool" -%}
-<|start_header_id|>ipython<|end_header_id|>
-
-[{"content": "{{ message.content }}", "id": "{{ message.tool_call_id }}"}]<|eot_id|>
-{%-     endif -%}
-{%-     if loop.last and message.type != "ai" -%}
-<|start_header_id|>assistant<|end_header_id|>
-{%-     endif -%}
-{%- endfor -%}""")
+{%- for message in messages %}
+    {%- if not (message.type == 'ipython' or message.type == 'tool' or message.tool_calls) %}
+        {{- '<|start_header_id|>' }} 
+        {%- if message['type'] == 'ai' %}
+            {{- 'assistant' }}
+        {%- elif message['type'] == 'human' %}
+            {{- 'user' }}
+        {%- else %}
+            {{- message['type'] }}
+        {%- endif %}
+        {{- '<|end_header_id|>\n\n'+ message['content'] | trim }}
+        {%- if not (message['type'] == 'ai' and loop.last) %}
+            {{- '<|eot_id|>' }}
+        {%- endif %}
+    {%- elif message.tool_calls %}
+        {%- if not message.tool_calls|length == 1 %}
+            {{- raise_exception("This model only supports single tool-calls at once!") }}
+        {%- endif %}
+        {%- set tool_call = message.tool_calls[0] %}
+        {%- if builtin_tools is defined and tool_call.name in builtin_tools %}
+            {{- '<|start_header_id|>assistant<|end_header_id|>\n\n' -}}
+            {{- "<|python_tag|>" + tool_call.name + ".call(" }}
+            {%- for arg_name, arg_val in tool_call.arguments | items %}
+                {{- arg_name + '="' + arg_val + '"' }}
+                {%- if not loop.last %}
+                    {{- ", " }}
+                {%- endif %}
+                {%- endfor %}
+            {{- ")" }}
+        {%- else  %}
+            {{- '<|start_header_id|>assistant<|end_header_id|>\n\n' -}}
+            {{- '<|python_tag|>{"name": "' + tool_call.name + '", ' }}
+            {{- '"parameters": ' }}
+            {{- tool_call.args | tojson }}
+            {{- "}" }}
+        {%- endif %}
+        {%- if builtin_tools is defined %}
+            {#- This means we're in ipython mode #}
+            {{- "<|eom_id|>" }}
+        {%- else %}
+            {{- "<|eot_id|>" }}
+        {%- endif %}
+    {%- elif message.type == "tool" or message.type == "ipython" %}
+        {{- "<|start_header_id|>ipython<|end_header_id|>\n\n" -}}
+        {"output": "{{ message.content }}"}
+        {{- "<|eot_id|>" }}
+    {%- endif %}
+    {%- if message['type'] != 'ai' and loop.last  %}
+        {{- '<|start_header_id|>assistant<|end_header_id|>\n\n' }}
+    {%- endif %}
+{%- endfor %}""")
 
 def parse_llama31_tool_call(text: str) -> Union[str, List[ToolCall]]:
     tool_calls = []

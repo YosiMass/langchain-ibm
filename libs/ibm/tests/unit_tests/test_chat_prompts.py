@@ -50,9 +50,14 @@ def add(a: int, b: int) -> int:
 def test_llama3_conversation_no_history() -> None:
     expected = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
+Cutting Knowledge Date: December 2023
+Today Date: 26 Jul 2024
+
 You are a respectful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>
 
-Hello, how are you?<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+Hello, how are you?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+"""
 
     assert LLAMA31_405B.template.render(messages=CONVERSATION_PROMPT.format_messages(
         chat_history=[], input="Hello, how are you?")) == expected
@@ -60,6 +65,9 @@ Hello, how are you?<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
 
 def test_llama3_conversation_history() -> None:
     expected = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+Cutting Knowledge Date: December 2023
+Today Date: 26 Jul 2024
 
 You are a respectful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>
 
@@ -71,7 +79,9 @@ What's the capital of Italy?<|eot_id|><|start_header_id|>assistant<|end_header_i
 
 Rome<|eot_id|><|start_header_id|>user<|end_header_id|>
 
-Thanks!<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+Thanks!<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+"""
 
     assert LLAMA31_405B.template.render(messages=CONVERSATION_PROMPT.format_messages(
         chat_history=HISTORY, input="Thanks!")) == expected
@@ -79,6 +89,9 @@ Thanks!<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
 
 def test_llama3_instruct_prompt() -> None:
     expected = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+Cutting Knowledge Date: December 2023
+Today Date: 26 Jul 2024
 
 You are an expert at extracting entities from text. Always extract entities using the following json output format:
 {
@@ -89,55 +102,104 @@ You are an expert at extracting entities from text. Always extract entities usin
 Here is the input:
 "The capital of Italy is Rome.". Remember to always respond in the json format specified above.<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
-Here is the json output:
-"""
+Here is the json output:"""
 
     assert LLAMA31_405B.template.render(messages=INSTRUCT_PROMPT.format_messages(
         input="The capital of Italy is Rome.")) == expected
 
 
 def test_llama3_tool_no_system_prompt():
+    tools = [convert_to_openai_tool(add)]
+
     expected = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
-Environment: ipython<|eot_id|><|start_header_id|>user<|end_header_id|>
+Environment: ipython
+Cutting Knowledge Date: December 2023
+Today Date: 26 Jul 2024
 
-Given the following functions, please respond with a JSON for a function call with its proper arguments that best answers the given prompt.
+You have access to the following functions. To call a function, please respond with JSON for a function call.Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}.Do not use variables.
 
-Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}. Do not use variables.
+{
+    "function": {
+        "description": "Add two numbers.",
+        "name": "add",
+        "parameters": {
+            "properties": {
+                "a": {
+                    "type": "integer"
+                },
+                "b": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "a",
+                "b"
+            ],
+            "type": "object"
+        }
+    },
+    "type": "function"
+}
 
-tools
+<|eot_id|><|start_header_id|>user<|end_header_id|>
 
-Hello<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+Hello<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+"""
 
     messages = ChatPromptTemplate.from_messages([
         ("human", "Hello")
     ])
 
     assert LLAMA31_405B.template.render(
-        messages=messages.format_messages(), tools="tools") == expected
+        messages=messages.format_messages(), tools=tools) == expected
 
 
 def test_llama3_tool_prompt():
     tools = [convert_to_openai_tool(add)]
 
-    expected = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+    expected = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
 Environment: ipython
+Cutting Knowledge Date: December 2023
+Today Date: 26 Jul 2024
+
+You have access to the following functions. To call a function, please respond with JSON for a function call.Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}.Do not use variables.
+
+{
+    "function": {
+        "description": "Add two numbers.",
+        "name": "add",
+        "parameters": {
+            "properties": {
+                "a": {
+                    "type": "integer"
+                },
+                "b": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "a",
+                "b"
+            ],
+            "type": "object"
+        }
+    },
+    "type": "function"
+}
 
 You are an helpful assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>
 
-Given the following functions, please respond with a JSON for a function call with its proper arguments that best answers the given prompt.
+What's 3 + 2?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
-Respond in the format {{"name": function name, "parameters": dictionary of argument name and its value}}. Do not use variables.
-
-{json.dumps(tools)}
-
-What's 3 + 2?<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+"""
 
     assert LLAMA31_405B.template.render(
         messages=TOOL_PROMPT.format_messages(),
         input="What's 3 + 2?",
-        tools=json.dumps(tools)
+        tools=tools
     ) == expected
 
     tool_call_message = AIMessage(
@@ -158,11 +220,11 @@ What's 3 + 2?<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
         ])}
     )
     
-    expected += f"""
+    expected += """<|python_tag|>{"name": "add", "parameters": {"a": 3, "b": 2}}<|eot_id|><|start_header_id|>ipython<|end_header_id|>
 
-<|python_tag|>[{{"name": "add", "parameters": {{"a": 3, "b": 2}}, "id": "{tool_calls[0]['id']}"}}]<|eom_id|><|start_header_id|>ipython<|end_header_id|>
+{"output": "5"}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
-[{{"content": "5", "id": "{tool_calls[0]['id']}"}}]<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+"""
 
     assert LLAMA31_405B.template.render(
         messages=(
@@ -170,7 +232,7 @@ What's 3 + 2?<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
             parsed_tool_call_message +
             ToolMessage(content="5", tool_call_id=tool_calls[0]["id"])).format_messages(),
         input="What's 3 + 2?",
-        tools=json.dumps(tools)
+        tools=tools
     ) == expected
 
 
