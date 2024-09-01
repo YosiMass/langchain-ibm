@@ -403,7 +403,8 @@ class ChatWatsonx(BaseChatModel):
             params = params | {
                 "stop_sequences": self.chat_schema.tools_stop_sequences}
 
-        chat_prompt = self.chat_schema.template.render(messages=messages, tools=tools)
+        chat_prompt = self.chat_schema.template.render(
+            messages=messages, tools=tools)
 
         if "tools" in kwargs:
             del kwargs["tools"]
@@ -431,7 +432,7 @@ class ChatWatsonx(BaseChatModel):
 
         merged_messages = _merge_chunk_message_runs(messages)
         chat_prompt = self.chat_schema.template.render(
-            messages=merged_messages, tools=json.dumps(tools) if tools else None)
+            messages=merged_messages, tools=tools)
 
         if "tools" in kwargs:
             del kwargs["tools"]
