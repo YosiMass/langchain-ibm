@@ -35,13 +35,15 @@ class ChatSchema(BaseModel):
     tools: bool
     """Whether or not this model supports tools."""
 
-    tools_parser: Optional[Callable[[str], Union[str, List[ToolCall]]]] = None
+    tools_parser: Optional[Callable[[str, bool], Union[str, List[ToolCall]]]] = None
     """
     Function to parse tool results from the model output. Must be provided if `tools` is True.
-    This function will be invoked if the model is called with tools enabled (passing "toools" or
+    This function will be invoked if the model is called with tools enabled (passing "tools" or
     binding them using `bind_tools`) and should return either a List of tool calls if the output
     of the model indicates that tools should be called (as per model's spec), or a string if the
     output is not a tool call.
+    The first argument is the model output, and the second argument is a boolean indicating whether
+    tools are forced (i.e. the model was called with `tool_choice="required" | True`).
     """
 
     tools_stop_sequences: Optional[List[str]] = None

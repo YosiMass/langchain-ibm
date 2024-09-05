@@ -3,6 +3,7 @@ import random
 import string
 from typing import List, Union
 from langchain_core.messages import ToolCall
+from pydantic.v1 import parse
 
 from langchain_ibm._chat.chat_schema import ChatSchema, template_env
 
@@ -127,14 +128,21 @@ _TEMPLATE = template_env.from_string("""<|begin_of_text|>
     {%- endif %}
     {%- if message['type'] != 'ai' and loop.last  %}
         {{- '<|start_header_id|>assistant<|end_header_id|>\n\n' }}
+        {%- if force_tool_call %}
+            {{- "<|python_tag|>" }}
+        {%- endif %}
     {%- endif %}
 {%- endfor %}""")
 
-def parse_llama31_tool_call(text: str) -> Union[str, List[ToolCall]]:
+def parse_llama31_tool_call(text: str, force_tool_call: bool) -> Union[str, List[ToolCall]]:
     tool_calls = []
-    if text.strip().startswith("<|python_tag|>"):
-        text = text.strip()[len("<|python_tag|>"):]
 
+    parse_tools = force_tool_call
+    if not parse_tools and text.lstrip().startswith("<|python_tag|>"):
+        text = text.lstrip()[len("<|python_tag|>"):]
+        parse_tools = True
+
+    if parse_tools:
         try:
             json_calls = json.loads(text)
             if not isinstance(json_calls, list):

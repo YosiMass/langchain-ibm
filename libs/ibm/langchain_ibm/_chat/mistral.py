@@ -103,14 +103,21 @@ _TEMPLATE = template_env.from_string("""{%- if messages[0]["type"] == "system" %
     {%- else %}
         {{- raise_exception("Only user and assistant roles are supported, with the exception of an initial optional system message!") }}
     {%- endif %}
+    {%- if message["type"] != "ai" and loop.last and force_tool_call %}
+    {{- "[TOOL_CALLS]" }}
+    {%- endif %}
 {%- endfor %}""")
 
 
-def parse_mistral_tool_call(text: str) -> Union[str, List[ToolCall]]:
+def parse_mistral_tool_call(text: str, force_tool_call: bool) -> Union[str, List[ToolCall]]:
     tool_calls = []
-    if text.strip().startswith("[TOOL_CALLS]"):
-        text = text.strip()[len("[TOOL_CALLS]"):]
 
+    parse_tools = force_tool_call
+    if not parse_tools and text.lstrip().startswith("[TOOL_CALLS]"):
+        text = text.lstrip()[len("[TOOL_CALLS]"):]
+        parse_tools = True
+
+    if parse_tools:
         try:
             json_calls = json.loads(text)
             if not isinstance(json_calls, list):

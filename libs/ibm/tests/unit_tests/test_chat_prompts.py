@@ -236,6 +236,54 @@ What's 3 + 2?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
     ) == expected
 
 
+def test_llama3_force_tool_call():
+    tools = [convert_to_openai_tool(add)]
+
+    expected = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+Environment: ipython
+Cutting Knowledge Date: December 2023
+Today Date: 26 Jul 2024
+
+You have access to the following functions. To call a function, please respond with JSON for a function call.Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}.Do not use variables.
+
+{
+    "function": {
+        "description": "Add two numbers.",
+        "name": "add",
+        "parameters": {
+            "properties": {
+                "a": {
+                    "type": "integer"
+                },
+                "b": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "a",
+                "b"
+            ],
+            "type": "object"
+        }
+    },
+    "type": "function"
+}
+
+You are an helpful assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+What's 3 + 2?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+<|python_tag|>"""
+
+    assert LLAMA31_405B.template.render(
+        messages=TOOL_PROMPT.format_messages(),
+        input="What's 3 + 2?",
+        tools=tools,
+        force_tool_call=True
+    ) == expected
+
+
 def test_mistral_conversation_no_history() -> None:
     expected = """<s>[INST] You are a respectful AI assistant.
 
@@ -316,6 +364,22 @@ What's 3 + 2?[/INST]"""
             ToolMessage(content="5", tool_call_id=tool_calls[0]["id"])).format_messages(),
         input="What's 3 + 2?",
         tools=tools
+    ) == expected
+
+
+def test_mistral_force_tool_call():
+    tools = [convert_to_openai_tool(add)]
+
+    expected = f"""<s>[AVAILABLE_TOOLS] {json.dumps(tools)}[/AVAILABLE_TOOLS]\
+[INST] You are an helpful assistant.
+
+What's 3 + 2?[/INST][TOOL_CALLS]"""
+
+    assert MISTRAL_LARGE.template.render(
+        messages=TOOL_PROMPT.format_messages(),
+        input="What's 3 + 2?",
+        tools=tools,
+        force_tool_call=True
     ) == expected
 
 

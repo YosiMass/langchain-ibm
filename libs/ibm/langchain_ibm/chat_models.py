@@ -381,6 +381,17 @@ class ChatWatsonx(BaseChatModel):
 
         return values
 
+    def _filter_tools(
+        self,
+        tools: List[BaseTool],
+        tool_choice: Union[dict, Literal["auto", "none", "required", "any"]]
+    ) -> Union[List[BaseTool], None]:
+        if isinstance(tool_choice, dict):
+            return [tool for tool in tools if tool.name == tool_choice["function"]["name"]]
+        elif tool_choice == "none":
+            return None
+        return tools
+
     def _generate(
         self,
         messages: List[BaseMessage],
@@ -396,15 +407,25 @@ class ChatWatsonx(BaseChatModel):
             )
             return generate_from_stream(stream_iter)
 
-        tools = kwargs.get("tools")
         params = self._create_params(stop, **kwargs)
+
+        tools = kwargs.get("tools")
+        tool_choice = kwargs.get("tool_choice")
 
         if tools and self.chat_schema.tools and self.chat_schema.tools_stop_sequences:
             params = params | {
                 "stop_sequences": self.chat_schema.tools_stop_sequences}
 
+        if tools and tool_choice:
+            tools = self._filter_tools(tools, tool_choice)
+
+        force_tool_call = tool_choice == "required"
+
         chat_prompt = self.chat_schema.template.render(
-            messages=messages, tools=tools)
+            messages=messages,
+            tools=tools,
+            force_tool_call=force_tool_call,
+        )
 
         if "tools" in kwargs:
             del kwargs["tools"]
@@ -414,7 +435,7 @@ class ChatWatsonx(BaseChatModel):
         response = self.watsonx_model.generate(
             prompt=chat_prompt, **(kwargs | {"params": params})
         )
-        return self._create_chat_result(response, bool(tools))
+        return self._create_chat_result(response, bool(tools), force_tool_call)
 
     def _stream(
         self,
@@ -424,15 +445,23 @@ class ChatWatsonx(BaseChatModel):
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
         tools = kwargs.get("tools")
+        tool_choice = kwargs.get("tool_choice")
+
         params = self._create_params(stop, **kwargs)
 
         if tools and self.chat_schema.tools and self.chat_schema.tools_stop_sequences:
             params = params | {
                 "stop_sequences": self.chat_schema.tools_stop_sequences}
 
+        if tools and tool_choice:
+            tools = self._filter_tools(tools, tool_choice)
+
         merged_messages = _merge_chunk_message_runs(messages)
         chat_prompt = self.chat_schema.template.render(
-            messages=merged_messages, tools=tools)
+            messages=merged_messages,
+            tools=tools,
+            force_tool_call=tool_choice == "required",
+        )
 
         if "tools" in kwargs:
             del kwargs["tools"]
@@ -474,7 +503,7 @@ class ChatWatsonx(BaseChatModel):
             params = (params or {}) | {"stop_sequences": stop}
         return params
 
-    def _create_chat_result(self, response: dict, tools: bool) -> ChatResult:
+    def _create_chat_result(self, response: dict, tools: bool, force_tool_call: bool) -> ChatResult:
         generations = []
         sum_of_total_generated_tokens = 0
         sum_of_total_input_tokens = 0
@@ -483,7 +512,7 @@ class ChatWatsonx(BaseChatModel):
             raise ValueError(response.get("error"))
 
         for res in response["results"]:
-            message = self._convert_dict_to_message(res, tools)
+            message = self._convert_dict_to_message(res, tools, force_tool_call)
             generation_info = dict(finish_reason=res.get("stop_reason"))
             if "generated_token_count" in res:
                 sum_of_total_generated_tokens += res["generated_token_count"]
@@ -512,7 +541,7 @@ class ChatWatsonx(BaseChatModel):
         }
         return ChatResult(generations=generations, llm_output=llm_output)
 
-    def _convert_dict_to_message(self, _dict: Mapping[str, Any], tools: bool) -> BaseMessage:
+    def _convert_dict_to_message(self, _dict: Mapping[str, Any], tools: bool, force_tool_call: bool) -> BaseMessage:
         """Convert a dictionary to a LangChain message.
 
         Args:
@@ -534,7 +563,7 @@ class ChatWatsonx(BaseChatModel):
             invalid_tool_calls: List[InvalidToolCall] = []
 
             assert self.chat_schema.tools_parser is not None
-            parse_result = self.chat_schema.tools_parser(generated_text)
+            parse_result = self.chat_schema.tools_parser(generated_text, force_tool_call)
 
             if isinstance(parse_result, str):
                 content = parse_result
@@ -607,6 +636,10 @@ class ChatWatsonx(BaseChatModel):
     def bind_tools(
         self,
         tools: Sequence[Union[Dict[str, Any], Type[BaseModel], Callable, BaseTool]],
+        *,
+        tool_choice: Optional[
+            Union[dict, str, Literal["auto", "none", "required", "any"], bool]
+        ] = None,
         **kwargs: Any,
     ) -> Runnable[LanguageModelInput, BaseMessage]:
         """Bind tool-like objects to this chat model.
@@ -616,6 +649,15 @@ class ChatWatsonx(BaseChatModel):
                 Can be  a dictionary, pydantic model, callable, or BaseTool. Pydantic
                 models, callables, and BaseTools will be automatically converted to
                 their schema dictionary representation.
+            Options are:
+                name of the tool (str): calls corresponding tool;
+                "auto": automatically selects a tool (including no tool);
+                "none": does not call a tool;
+                "any" or True:forces tool call (requires `tools` be length 1);
+                False or None: no effect;
+
+                or a dict of the form:
+                {"type": "function", "function": {"name": <<tool_name>>}}.
             **kwargs: Any additional parameters to pass to the
                 :class:`~langchain.runnable.Runnable` constructor.
         """
@@ -628,6 +670,36 @@ class ChatWatsonx(BaseChatModel):
             )
 
         formatted_tools = [convert_to_openai_tool(tool) for tool in tools]
+        if tool_choice:
+            if tool_choice == True:
+                tool_choice = "required"
+
+            if tool_choice == "required" and len(tools) == 0:
+                raise ValueError(
+                    "When specifying `tool_choice` as 'required' (or True), you must provide at least one tool."
+                )
+
+            if isinstance(tool_choice, str):
+                if tool_choice not in ("auto", "none", "any", "required"):
+                    tool_choice = {
+                        "type": "function",
+                        "function": {"name": tool_choice},
+                    }
+            elif isinstance(tool_choice, dict):
+                tool_names = [
+                    formatted_tool["function"]["name"]
+                    for formatted_tool in formatted_tools
+                ]
+                if not any(
+                    tool_name == tool_choice["function"]["name"]
+                    for tool_name in tool_names
+                ):
+                    raise ValueError(
+                        f"Tool choice {tool_choice} was specified, but the only "
+                        f"provided tools were {tool_names}."
+                    )
+
+            kwargs["tool_choice"] = tool_choice
 
         return super().bind(tools=formatted_tools, **kwargs)
 
@@ -813,7 +885,8 @@ class ChatWatsonx(BaseChatModel):
         elif method == "json_mode":
             llm = self.bind(response_format={"type": "json_object"})
             output_parser = (
-                PydanticOutputParser(pydantic_object=schema) # type: ignore[type-var, arg-type]
+                # type: ignore[type-var, arg-type]
+                PydanticOutputParser(pydantic_object=schema)
                 if is_pydantic_schema
                 else JsonOutputParser()
             )
