@@ -137,8 +137,22 @@ def parse_mistral_tool_call(text: str, force_tool_call: bool) -> Union[str, List
             return tool_calls
         except:
             return text
-    else:
-        return text
+
+    # Ugly hack if the model doesn't use the [TOOL_CALLS] token
+    try:
+        parsed_call = json.loads(text)
+        if not isinstance(parsed_call, list):
+            parsed_call = [parsed_call]
+
+        if all(map(lambda call: isinstance(call, dict) and "name" in call and "parameters" in call, parsed_call)):
+            for call in parsed_call:
+                id = "".join(random.choice(_alphanum) for _ in range(9))
+                tool_calls.append(ToolCall(name=call["name"], args=call["parameters"], id=id))
+            return tool_calls
+    except json.JSONDecodeError:
+        pass
+
+    return text
 
 
 MISTRAL_LARGE = ChatSchema(
