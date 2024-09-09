@@ -1,10 +1,13 @@
 import json
 import random
+import logging
 import string
 from typing import List, Union
 from langchain_core.messages import ToolCall
 
 from langchain_ibm._chat.chat_schema import ChatSchema, template_env
+
+logger = logging.getLogger(__name__)
 
 _alphanum = string.ascii_letters + string.digits
 
@@ -136,6 +139,8 @@ def parse_mistral_tool_call(text: str, force_tool_call: bool) -> Union[str, List
 
             return tool_calls
         except:
+            logger.error(
+                "Failed to parse tool calls, falling back on returing text", exc_info=True)
             return text
 
     # Ugly hack if the model doesn't use the [TOOL_CALLS] token
@@ -145,9 +150,12 @@ def parse_mistral_tool_call(text: str, force_tool_call: bool) -> Union[str, List
             parsed_call = [parsed_call]
 
         if all(map(lambda call: isinstance(call, dict) and "name" in call and "parameters" in call, parsed_call)):
+            logger.warning(
+                "Model did not generate tool call token, but response is a valid json tool call, parsing it anyway")
             for call in parsed_call:
                 id = "".join(random.choice(_alphanum) for _ in range(9))
-                tool_calls.append(ToolCall(name=call["name"], args=call["parameters"], id=id))
+                tool_calls.append(
+                    ToolCall(name=call["name"], args=call["parameters"], id=id))
             return tool_calls
     except json.JSONDecodeError:
         pass
