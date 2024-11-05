@@ -7,7 +7,7 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_ibm._chat.llama3 import LLAMA31_405B
 from langchain_ibm._chat.llama2 import LLAMA2_70B_CHAT
 from langchain_ibm._chat.mistral import MISTRAL_LARGE
-from langchain_ibm._chat.granite import GRANITE_13B_CHAT_V2
+from langchain_ibm._chat.granite import GRANITE_13B_CHAT_V2, GRANITE_3_8B_INSTRUCT
 from langchain_ibm.chat_models import _merge_chunk_message_runs
 
 
@@ -393,6 +393,9 @@ Hello, how are you?
     assert GRANITE_13B_CHAT_V2.template.render(messages=CONVERSATION_PROMPT.format_messages(
         chat_history=[], input="Hello, how are you?")) == expected
 
+    assert GRANITE_3_8B_INSTRUCT.template.render(messages=CONVERSATION_PROMPT.format_messages(
+        chat_history=[], input="Hello, how are you?")) == expected
+
 
 def test_granite_conversation_history() -> None:
     expected = """<|system|>
@@ -412,6 +415,8 @@ Thanks!
     assert GRANITE_13B_CHAT_V2.template.render(messages=CONVERSATION_PROMPT.format_messages(
         chat_history=HISTORY, input="Thanks!")) == expected
 
+    assert GRANITE_3_8B_INSTRUCT.template.render(messages=CONVERSATION_PROMPT.format_messages(
+        chat_history=HISTORY, input="Thanks!")) == expected
 
 def test_granite_instruct_prompt() -> None:
     expected = """<|system|>
@@ -430,6 +435,8 @@ Here is the json output:
     assert GRANITE_13B_CHAT_V2.template.render(messages=INSTRUCT_PROMPT.format_messages(
         input="The capital of Italy is Rome.")) == expected
 
+    assert GRANITE_3_8B_INSTRUCT.template.render(messages=INSTRUCT_PROMPT.format_messages(
+        input="The capital of Italy is Rome.")) == expected
 
 def test_llama2_conversation_no_history() -> None:
     expected = """[INST] <<SYS>>
